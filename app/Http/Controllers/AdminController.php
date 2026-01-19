@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Http;
-use Illuminate\Http\Client\Response;
+use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Http\Request;
 
 class AdminController extends Controller
@@ -117,6 +117,86 @@ class AdminController extends Controller
             'filters' => $filters
         ]);
     }
+    public function tambahBarangBaru(Request $request)
+{
+    $validated = $request->validate([
+        'nama_barang' => 'required|string|max:255',
+        'stok'        => 'required|integer|min:0',
+    ]);
+    /** @var ClientResponse $res */
+    $res = Http::withToken(session('token'))
+        ->post(config('services.api.url') . '/admin/barang', $validated);
+
+    if ($res->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors([
+            'auth' => 'Session habis, silakan login ulang'
+        ]);
+    }
+
+    if ($res->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal menambah barang (' . $res->status() . '): ' .
+                ($res->json('message') ?? $res->body())
+        ])->withInput();
+    }
+
+    return redirect()
+        ->route('data.barang')
+        ->with('success', 'Barang berhasil ditambahkan');
+}
+public function tambahStokBarang(Request $request, $id)
+{
+    $validated = $request->validate([
+        'stok_tambah' => 'required|integer|min:1',
+    ]);
+
+    // 1) GET barang by id
+    /** @var ClientResponse $getRes */
+    $getRes = Http::withToken(session('token'))
+        ->get(config('services.api.url') . "/admin/barang/{$id}");
+
+    if ($getRes->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors(['auth' => 'Session habis, silakan login ulang']);
+    }
+
+    if ($getRes->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal mengambil barang (' . $getRes->status() . '): ' .
+                ($getRes->json('message') ?? $getRes->body())
+        ]);
+    }
+
+    $barang = $getRes->json('data') ?? $getRes->json();
+
+    $stokSekarang = (int)($barang['stok'] ?? 0);
+    $stokBaruInt  = $stokSekarang + (int)$validated['stok_tambah'];
+
+    // 2) PUT update barang (JSON) — stok wajib string sesuai Go
+    $payload = [
+        'stok' => (string)$stokBaruInt, // ✅ string
+    ];
+    /** @var ClientResponse $putRes */
+    $putRes = Http::withToken(session('token'))
+        ->put(config('services.api.url') . "/admin/barang/{$id}", $payload);
+
+    if ($putRes->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors(['auth' => 'Session habis, silakan login ulang']);
+    }
+
+    if ($putRes->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal update stok (' . $putRes->status() . '): ' .
+                ($putRes->json('message') ?? $putRes->json('error') ?? $putRes->body())
+        ]);
+    }
+
+    return redirect()->route('data.barang')->with('success', 'Stok berhasil ditambahkan');
+}
+
+
     public function dataBarang()
 {
     /** @var \Illuminate\Http\Client\Response $response */
@@ -152,7 +232,32 @@ class AdminController extends Controller
         'barang' => $filteredBarang,
         'search' => $search,
     ]);
-} 
+}
+ public function deleteBarang($id)
+{
+    /** @var \Illuminate\Http\Client\Response $res */
+    $res = Http::withToken(session('token'))
+        ->delete(config('services.api.url') . "/admin/barang/{$id}");
+
+    if ($res->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors([
+            'auth' => 'Session habis, silakan login ulang'
+        ]);
+    }
+
+    if ($res->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal menghapus barang (' . $res->status() . '): ' .
+                ($res->json('message') ?? $res->json('error') ?? $res->body())
+        ]);
+    }
+
+    return redirect()
+        ->route('data.barang')
+        ->with('success', 'Barang berhasil dihapus');
+}
+
     public function buatTicket(Request $request)
 {
     /*
@@ -273,11 +378,10 @@ public function storeUser(Request $request)
         'username'  => 'required|string',
         'full_name' => 'required|string',
         'email'     => 'required|email',
-        'Phone'     => 'required|string', // case-sensitive sesuai API
-        'role'      => 'required|in:admin,user',
+        'Phone'     => 'required|string',
+        'role'      => 'required|in:admin,user,teknisi', // ✅ tambah teknisi
         'password'  => 'required|min:6',
     ]);
-
     /** @var Response $response */
     $response = Http::withToken(session('token'))
         ->post(config('services.api.url') . '/admin/users', $validated);
@@ -298,6 +402,7 @@ public function storeUser(Request $request)
         ->with('success', 'User berhasil ditambahkan');
 }
 
+
 // =========================
 // UPDATE USER
 // =========================
@@ -307,10 +412,9 @@ public function updateUser(Request $request, $id)
         'username'  => 'required|min:3',
         'email'     => 'required|email',
         'full_name' => 'required',
-        'Phone'     => 'required', // case-sensitive
-        'role'      => 'required|in:admin,user',
+        'Phone'     => 'required',
+        'role'      => 'required|in:admin,user,teknisi', // ✅ tambah teknisi
     ]);
-
     /** @var Response $response */
     $response = Http::withToken(session('token'))
         ->put(config('services.api.url') . "/admin/users/{$id}", $validated);
@@ -402,6 +506,35 @@ public function deleteUser($id)
 
     return back()->with('success', 'Profile berhasil diperbarui');
 }
+public function updateUserPassword(Request $request, $id)
+{
+    $validated = $request->validate([
+        'password' => 'required|min:6|confirmed',
+    ]);
+    /** @var Response $res */
+    $res = Http::withToken(session('token'))
+        ->post(
+            config('services.api.url') . "/admin/users/{$id}/password",
+            [
+                "new_password" => $validated['password']
+            ]
+        );
+
+    if ($res->status() === 401) {
+        session()->forget('token');
+        return redirect('/login');
+    }
+
+    if ($res->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal reset password: ' . $res->body()
+        ]);
+    }
+
+    return redirect()
+        ->route('manajemen.users')
+        ->with('success', 'Password user berhasil direset');
+}
 
     public function updatePassword(Request $request)
 {
@@ -424,5 +557,172 @@ public function deleteUser($id)
 
     return back()->with('success', 'Password berhasil diubah');
 }
+public function resetPasswordUser(Request $request, $id)
+{
+    $validated = $request->validate([
+        'new_password' => 'required|min:6|confirmed',
+    ]);
 
+    // Ambil data user dari list user (biar dapat email/username)
+    /** @var ClientResponse $usersRes */
+    $usersRes = Http::withToken(session('token'))
+        ->get(config('services.api.url') . '/admin/users');
+
+    if ($usersRes->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors(['auth' => 'Session habis, silakan login ulang']);
+    }
+
+    if ($usersRes->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal ambil user: ' . ($usersRes->json('message') ?? $usersRes->body())
+        ]);
+    }
+
+    $users = $usersRes->json('users') ?? [];
+    $user = collect($users)->firstWhere('id', (int)$id);
+
+    if (!$user) {
+        return back()->withErrors(['error' => 'User tidak ditemukan']);
+    }
+
+    // Kirim ke API Go reset-password
+    // ⚠️ SESUAIKAN KEY yang backend kamu terima: email/username/Phone
+    $payload = [
+        'email' => $user['email'],                 // ✅ paling umum
+        // 'username' => $user['username'],        // alternatif
+        // 'Phone' => $user['Phone'],              // alternatif case-sensitive
+        'new_password' => $validated['new_password'],
+    ];
+
+    /** @var ClientResponse $res */
+    $res = Http::withToken(session('token'))
+        ->post(config('services.api.url') . '/users/reset-password', $payload);
+
+    if ($res->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors(['auth' => 'Session habis, silakan login ulang']);
+    }
+
+    if ($res->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal reset password (' . $res->status() . '): ' .
+                ($res->json('message') ?? $res->json('error') ?? $res->body())
+        ]);
+    }
+
+    return redirect()
+        ->route('manajemen.users')
+        ->with('success', 'Password user berhasil direset');
+}
+// =========================
+// UPDATE REPORT (MAINTENANCE)
+// =========================
+public function updateReport(Request $request, $id)
+{
+    $validated = $request->validate([
+        'barang_id'   => 'required|integer',
+        'tvm_code'    => 'required|string|max:50',
+        'location'    => 'required|string|max:255',
+        'issue_type'  => 'required|string|max:255',
+        'description' => 'required|string',
+        'priority'    => 'required|in:low,medium,high,urgent',
+        'status'      => 'required|in:pending,in_progress,resolved,closed',
+        'image' => 'required|image|max:2048',
+    ]);
+
+    $payload = [
+        ['name' => 'barang_id',   'contents' => $validated['barang_id']],
+        ['name' => 'tvm_code',    'contents' => $validated['tvm_code']],
+        ['name' => 'location',    'contents' => $validated['location']],
+        ['name' => 'issue_type',  'contents' => $validated['issue_type']],
+        ['name' => 'description', 'contents' => $validated['description']],
+        ['name' => 'priority',    'contents' => $validated['priority']],
+        ['name' => 'status',      'contents' => $validated['status']],
+    ];
+    $file = $request->file('image');
+$payload[] = [
+  'name'     => 'image',
+  'contents' => fopen($file->getRealPath(), 'r'),
+  'filename' => $file->getClientOriginalName(),
+];
+
+    $response = Http::withToken(session('token'))
+        ->asMultipart()
+        ->put(config('services.api.url') . "/admin/reports/{$id}", $payload);
+    /** @var Response $response */
+    if ($response->unauthorized()) {
+        session()->forget('token');
+        return redirect('/login')->withErrors(['auth' => 'Session habis, silakan login ulang']);
+    }
+
+    if ($response->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal update ticket (' . $response->status() . '): ' .
+                ($response->json('message') ?? $response->body())
+        ])->withInput();
+    }
+
+    return redirect()->route('data.maintenance')->with('success', 'Ticket berhasil diupdate');
+}
+
+
+// =========================
+// DELETE REPORT (MAINTENANCE)
+// =========================
+public function deleteReport($id)
+{
+    /** @var Response $response */
+    $response = Http::withToken(session('token'))
+        ->delete(config('services.api.url') . "/admin/reports/{$id}");
+
+    if ($response->unauthorized()) {
+        session()->forget('token');
+        return redirect('/login')->withErrors([
+            'auth' => 'Session habis, silakan login ulang'
+        ]);
+    }
+
+    if ($response->failed()) {
+        return back()->withErrors([
+            'error' => $response->json('message') ?? 'Gagal menghapus ticket'
+        ]);
+    }
+
+    return redirect()
+        ->route('data.maintenance')
+        ->with('success', 'Ticket berhasil dihapus');
+}
+public function history()
+{   
+    /** @var ClientResponse $res */
+    $res = Http::withToken(session('token'))
+        ->get(config('services.api.url') . '/reports/history');
+
+    if ($res->status() === 401) {
+        session()->forget('token');
+        return redirect('/login')->withErrors([
+            'auth' => 'Session habis, silakan login ulang'
+        ]);
+    }
+
+    if ($res->failed()) {
+        return back()->withErrors([
+            'error' => 'Gagal mengambil history (' . $res->status() . '): ' .
+                ($res->json('message') ?? $res->body())
+        ]);
+    }
+
+    // ✅ Karena response berupa array root: [...]
+    $history = $res->json() ?? [];
+
+    // ✅ Sort terbaru dulu berdasarkan CreatedAt
+    usort($history, function ($a, $b) {
+        $ta = strtotime($a['CreatedAt'] ?? '1970-01-01');
+        $tb = strtotime($b['CreatedAt'] ?? '1970-01-01');
+        return $tb <=> $ta;
+    });
+
+    return view('history', compact('history'));
+}
 }

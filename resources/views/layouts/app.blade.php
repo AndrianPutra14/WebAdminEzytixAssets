@@ -430,6 +430,6 @@ overlay?.addEventListener('click', () => {
     overlay.classList.remove('show');
 });
 </script>
-
+@stack('scripts')
 </body>
 </html>

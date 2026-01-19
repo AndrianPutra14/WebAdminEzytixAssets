@@ -21,6 +21,17 @@
     </div>
 </div>
 
+{{-- ALERT --}}
+@if($errors->has('error'))
+    <div class="alert alert-danger">{{ $errors->first('error') }}</div>
+@endif
+@if($errors->has('auth'))
+    <div class="alert alert-warning">{{ $errors->first('auth') }}</div>
+@endif
+@if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+
 {{-- FILTER & SEARCH --}}
 <div class="card mb-4 card-custom border-custom">
     <div class="card-body">
@@ -62,10 +73,23 @@
                         <td>{{ $item['stok'] }}</td>
                         <td>{{ \Carbon\Carbon::parse($item['created_at'])->format('Y-m-d H:i') }}</td>
                         <td>{{ \Carbon\Carbon::parse($item['updated_at'])->format('Y-m-d H:i') }}</td>
+
                         <td class="text-end">
+                            {{-- Tambah Stok --}}
                             <button class="btn btn-sm btn-success" data-bs-toggle="modal"
-                                data-bs-target="#tambahStokModal{{ $item['id'] }}">
-                                <i class="bi bi-plus-circle"></i> Tambah Stok
+                                data-bs-target="#tambahStokModal{{ $item['id'] }}"
+                                title="Tambah Stok">
+                                <i class="bi bi-plus-circle"></i>
+                            </button>
+
+                            {{-- Hapus --}}
+                            <button class="btn btn-sm btn-danger ms-2"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteBarangModal"
+                                data-id="{{ $item['id'] }}"
+                                data-nama="{{ $item['nama_barang'] }}"
+                                title="Hapus Barang">
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     </tr>
@@ -141,4 +165,65 @@
         </form>
     </div>
 </div>
+
+{{-- ===================== MODAL DELETE BARANG ===================== --}}
+<div class="modal fade" id="deleteBarangModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Hapus Barang</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <form id="deleteBarangForm" method="POST" action="">
+                @csrf
+                @method('DELETE')
+
+                <div class="modal-body">
+                    <p>Yakin ingin menghapus barang ini?</p>
+                    <div class="p-3 rounded bg-black border">
+                        <div class="fw-semibold" id="delete_barang_nama">-</div>
+                        <small class="text-white">ID: <span id="delete_barang_id">-</span></small>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-danger">Ya, Hapus</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const deleteModal = document.getElementById('deleteBarangModal');
+    const deleteForm  = document.getElementById('deleteBarangForm');
+
+    const BASE_DELETE_URL = @json(url('/data-barang'));
+
+    deleteModal.addEventListener('show.bs.modal', (event) => {
+        const btn = event.relatedTarget;
+        if (!btn) return;
+
+        const id = btn.getAttribute('data-id');
+        const nama = btn.getAttribute('data-nama') || '-';
+
+        document.getElementById('delete_barang_id').textContent = id || '-';
+        document.getElementById('delete_barang_nama').textContent = nama;
+
+        deleteForm.action = `${BASE_DELETE_URL}/${id}`;
+    });
+
+    deleteModal.addEventListener('hidden.bs.modal', () => {
+        deleteForm.action = '';
+        document.getElementById('delete_barang_id').textContent = '-';
+        document.getElementById('delete_barang_nama').textContent = '-';
+    });
+});
+</script>
+@endpush

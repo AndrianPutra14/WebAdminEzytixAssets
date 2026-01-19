@@ -6,11 +6,22 @@
 <button class="btn btn-outline-light d-lg-none mb-3" id="toggleSidebar">
     <i class="bi bi-list"></i>
 </button>
+
 {{-- HEADER --}}
 <div class="mb-4">
     <h4 class="fw-bold text-white mb-1">History Maintenance</h4>
-    <p class="text-muted mb-0">Timeline semua aktivitas maintenance ticket</p>
+    <p class="text-white mb-0">Timeline semua aktivitas maintenance ticket</p>
 </div>
+
+@if($errors->has('error'))
+    <div class="alert alert-danger">{{ $errors->first('error') }}</div>
+@endif
+@if($errors->has('auth'))
+    <div class="alert alert-warning">{{ $errors->first('auth') }}</div>
+@endif
+@if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
 
 {{-- TIMELINE CARD --}}
 <div class="card card-dark">
@@ -22,73 +33,86 @@
 
         <div class="timeline">
 
-            {{-- ITEM --}}
-            <div class="timeline-item">
-                <div class="timeline-dot bg-primary"></div>
+            @forelse(($history ?? []) as $item)
+                @php
+                    $reportId = $item['_report_id'] ?? $item['TVMReportID'] ?? null;
 
-                <div class="timeline-content">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <span class="fw-semibold">#TKT-003</span>
-                            <span class="badge badge-high ms-2">high</span>
-                            <span class="badge badge-open ms-1">open</span>
+                    $fromStatus = strtolower($item['FromStatus'] ?? '-');
+                    $toStatus   = strtolower($item['ToStatus'] ?? '-');
+
+                    $role = $item['Role']
+                        ?? ($item['changed_by']['role'] ?? '-');
+
+                    $userName = $item['changed_by']['full_name']
+                        ?? $item['changed_by']['username']
+                        ?? 'Unknown';
+
+                    $createdAt = $item['CreatedAt'] ?? null;
+                    $timeText = $createdAt
+                        ? \Carbon\Carbon::parse($createdAt)->format('Y-m-d H:i')
+                        : '-';
+
+                    // warna dot per status tujuan (toStatus)
+                    $dotClass = match ($toStatus) {
+                        'pending' => 'bg-primary',
+                        'in_progress' => 'bg-warning',
+                        'resolved' => 'bg-success',
+                        'closed' => 'bg-secondary',
+                        default => 'bg-light',
+                    };
+
+                    // badge class status (pakai class badge kamu di layout)
+                    $badgeClass = match ($toStatus) {
+                        'pending' => 'badge-open',
+                        'in_progress' => 'badge-progress',
+                        'resolved' => 'badge-resolved',
+                        'closed' => 'badge-closed',
+                        default => 'badge-secondary',
+                    };
+
+                    $ticketCode = $reportId !== null
+                        ? 'TVM-' . str_pad((int)$reportId, 3, '0', STR_PAD_LEFT)
+                        : '-';
+
+                    $fromLabel = str_replace('_', ' ', $fromStatus);
+                    $toLabel   = str_replace('_', ' ', $toStatus);
+                @endphp
+
+                <div class="timeline-item">
+                    <div class="timeline-dot {{ $dotClass }}"></div>
+
+                    <div class="timeline-content">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <span class="fw-semibold">{{ $ticketCode }}</span>
+                                <span class="badge {{ $badgeClass }} ms-2">{{ $toLabel }}</span>
+
+                                <div class="mt-1 text-white">
+                                    <small class="text-white">
+                                        Status: <span class="text-white">{{ $fromLabel }}</span>
+                                        <i class="bi bi-arrow-right mx-1"></i>
+                                        <span class="text-white">{{ $toLabel }}</span>
+                                    </small>
+                                </div>
+                            </div>
+
+                            <small class="text-white">{{ $timeText }}</small>
                         </div>
-                        <small class="text-white">2024-12-19 11:00</small>
-                    </div>
 
-                    <div class="mt-2">
-                        <div class="fw-semibold">VM-A330-09</div>
-                        <small class="text-white">Cabin - Economy Class</small>
-                        <div class="mt-1">Issue: Tidak Berfungsi</div>
+                        <div class="mt-2">
+                            <small class="text-white">
+                                Diubah oleh: <span class="fw-semibold">{{ $userName }}</span>
+                                <span class="badge bg-light text-dark ms-2">{{ $role }}</span>
+                            </small>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {{-- ITEM --}}
-            <div class="timeline-item">
-                <div class="timeline-dot bg-danger"></div>
-
-                <div class="timeline-content">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <span class="fw-semibold">#TKT-001</span>
-                            <span class="badge badge-critical ms-2">critical</span>
-                            <span class="badge badge-open ms-1">open</span>
-                        </div>
-                        <small class="text-white">2024-12-19 08:30</small>
-                    </div>
-
-                    <div class="mt-2">
-                        <div class="fw-semibold">VM-A380-01</div>
-                        <small class="text-white">Cabin - First Class</small>
-                        <div class="mt-1">Issue: Tidak Berfungsi</div>
-                        <small class="text-white">Assigned to: teknisi</small>
-                    </div>
+            @empty
+                <div class="text-center text-muted py-4">
+                    Belum ada history.
                 </div>
-            </div>
-
-            {{-- ITEM --}}
-            <div class="timeline-item">
-                <div class="timeline-dot bg-warning"></div>
-
-                <div class="timeline-content">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <span class="fw-semibold">#TKT-002</span>
-                            <span class="badge badge-high ms-2">high</span>
-                            <span class="badge badge-progress ms-1">in-progress</span>
-                        </div>
-                        <small class="text-white">2024-12-18 14:20</small>
-                    </div>
-
-                    <div class="mt-2">
-                        <div class="fw-semibold">VM-B777-05</div>
-                        <small class="text-white">Galley - Rear</small>
-                        <div class="mt-1">Issue: Produk Macet</div>
-                        <small class="text-white">Assigned to: teknisi</small>
-                    </div>
-                </div>
-            </div>
+            @endforelse
 
         </div>
     </div>
